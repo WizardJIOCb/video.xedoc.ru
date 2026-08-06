@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { AiPanel } from './ai-panel'
+import { WangpVideoPanel } from './wangp-video-panel'
 
 /**
  * Container for the AI sidebar tab. The on-device assistant (agent that edits
@@ -10,6 +11,7 @@ import { AiPanel } from './ai-panel'
 export const AiTab = memo(function AiTab() {
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <WangpVideoPanel />
       <div className="min-h-0 flex-1 overflow-hidden">
         <AiPanel />
       </div>

@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "FreeCut WanGP Connector",
+  "description": "Connects video.xedoc.ru to a local WanGP instance without exposing it to the internet.",
+  "version": "0.1.0",
+  "permissions": ["scripting", "storage", "tabs"],
+  "host_permissions": ["http://127.0.0.1:7860/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://video.xedoc.ru/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ]
+}
