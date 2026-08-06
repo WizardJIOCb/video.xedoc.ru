@@ -267,6 +267,53 @@ type ProbedVideoMetadata = Extract<
   { type: 'video' }
 >
 
+/**
+ * Generated files normally go through the MediaBunny worker so we also get a
+ * thumbnail and packet-level metadata. A browser can still play many WanGP
+ * outputs when that worker cannot start (for example, when an optional decoder
+ * WASM module fails to load in a cross-origin-isolated worker). Keep the
+ * generated asset usable in that case instead of discarding the completed job.
+ */
+async function probeGeneratedVideoInMainThread(file: File): Promise<ProbedVideoMetadata> {
+  const objectUrl = URL.createObjectURL(file)
+  const video = document.createElement('video')
+  video.preload = 'metadata'
+  video.muted = true
+  video.src = objectUrl
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timeout = window.setTimeout(() => {
+        reject(new Error('Timed out while loading generated video metadata.'))
+      }, 15_000)
+      video.onloadedmetadata = () => {
+        window.clearTimeout(timeout)
+        resolve()
+      }
+      video.onerror = () => {
+        window.clearTimeout(timeout)
+        reject(new Error('The browser could not read the generated video.'))
+      }
+    })
+
+    return {
+      type: 'video',
+      duration: Number.isFinite(video.duration) ? video.duration : 0,
+      width: video.videoWidth || 1920,
+      height: video.videoHeight || 1080,
+      fps: 30,
+      codec: 'browser-probed',
+      bitrate: 0,
+      audioCodecSupported: true,
+      videoCodecSupported: true,
+    }
+  } finally {
+    video.removeAttribute('src')
+    video.load()
+    URL.revokeObjectURL(objectUrl)
+  }
+}
+
 function resolveGeneratedThumbnailSize(
   thumbnail: Blob | undefined,
   dimensions: { width: number; height: number },
@@ -1383,13 +1430,22 @@ class MediaLibraryService {
       throw new Error(`Generated file must be a video. Received "${resolvedMimeType}".`)
     }
 
-    const { metadata, thumbnail } = await mediaProcessorService.processMedia(
-      file,
-      resolvedMimeType,
-      { thumbnailTimestamp: 1, fastMetadata: false },
-    )
-    if (metadata.type !== 'video') {
-      throw new Error(`Generated file did not probe as video (got "${metadata.type}").`)
+    let metadata: ProbedVideoMetadata
+    let thumbnail: Blob | undefined
+    try {
+      const processed = await mediaProcessorService.processMedia(file, resolvedMimeType, {
+        thumbnailTimestamp: 1,
+        fastMetadata: false,
+      })
+      if (processed.metadata.type !== 'video') {
+        throw new Error(`Generated file did not probe as video (got "${processed.metadata.type}").`)
+      }
+      metadata = processed.metadata
+      thumbnail = processed.thumbnail
+    } catch (error) {
+      logger.warn('Generated video processor failed; using browser metadata fallback.', error)
+      metadata = await probeGeneratedVideoInMainThread(file)
+      thumbnail = undefined
     }
 
     const thumbnailDimensions = resolveGeneratedThumbnailSize(thumbnail, metadata)
