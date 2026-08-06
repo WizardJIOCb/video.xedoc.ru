@@ -1,5 +1,14 @@
-import { memo, useCallback, useEffect, useState } from 'react'
-import { CheckCircle2, Download, Loader2, PlugZap, RefreshCw, WandSparkles } from 'lucide-react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import {
+  CheckCircle2,
+  Download,
+  ImagePlus,
+  Loader2,
+  PlugZap,
+  RefreshCw,
+  WandSparkles,
+  X,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -22,6 +31,30 @@ interface ConnectorResult {
 interface DownloadMeta {
   name: string
   mimeType: string
+}
+
+interface ReferenceImagePayload {
+  name: string
+  mimeType: string
+  base64: string
+}
+
+const MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024
+
+function toReferenceImagePayload(file: File): Promise<ReferenceImagePayload> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(reader.error || new Error('Could not read the reference image.'))
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        reject(new Error('Could not read the reference image.'))
+        return
+      }
+      const base64 = reader.result.slice(reader.result.indexOf(',') + 1)
+      resolve({ name: file.name, mimeType: file.type || 'image/png', base64 })
+    }
+    reader.readAsDataURL(file)
+  })
 }
 
 function requestConnector<T>(action: ConnectorAction, payload?: unknown): Promise<T> {
@@ -150,6 +183,7 @@ export const WangpVideoPanel = memo(function WangpVideoPanel() {
   const showNotification = useMediaLibraryStore((state) => state.showNotification)
 
   const [prompt, setPrompt] = useState('')
+  const [referenceImage, setReferenceImage] = useState<File | null>(null)
   const [connectorStatus, setConnectorStatus] = useState<'checking' | 'ready' | 'offline'>(
     'checking',
   )
@@ -157,6 +191,7 @@ export const WangpVideoPanel = memo(function WangpVideoPanel() {
   const [job, setJob] = useState<ConnectorResult | null>(null)
   const [isStarting, setIsStarting] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
+  const referenceInputRef = useRef<HTMLInputElement>(null)
 
   const checkConnector = useCallback(async () => {
     setConnectorStatus('checking')
@@ -215,7 +250,11 @@ export const WangpVideoPanel = memo(function WangpVideoPanel() {
     setIsStarting(true)
     setMessage('Sending the prompt to WanGP…')
     try {
-      const started = await requestConnector<ConnectorResult>('start', { prompt: trimmedPrompt })
+      const payload = referenceImage ? await toReferenceImagePayload(referenceImage) : undefined
+      const started = await requestConnector<ConnectorResult>('start', {
+        prompt: trimmedPrompt,
+        referenceImage: payload,
+      })
       setJob(started)
       setMessage(started.message || 'Submitted to WanGP queue.')
     } catch (error) {
@@ -223,7 +262,21 @@ export const WangpVideoPanel = memo(function WangpVideoPanel() {
     } finally {
       setIsStarting(false)
     }
-  }, [currentProjectId, prompt])
+  }, [currentProjectId, prompt, referenceImage])
+
+  const selectReferenceImage = useCallback((file: File | null) => {
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setMessage('Choose a PNG, JPEG, or WebP image.')
+      return
+    }
+    if (file.size > MAX_REFERENCE_IMAGE_BYTES) {
+      setMessage('The reference image must be 10 MB or smaller.')
+      return
+    }
+    setReferenceImage(file)
+    setMessage(`Reference image “${file.name}” selected.`)
+  }, [])
 
   const importVideo = useCallback(async () => {
     if (!currentProjectId || !job?.outputUrl) return
@@ -289,6 +342,47 @@ export const WangpVideoPanel = memo(function WangpVideoPanel() {
         className="mt-2 min-h-20 resize-y bg-background/50 text-xs"
         disabled={connectorStatus !== 'ready' || jobBusy || isImporting}
       />
+
+      <input
+        ref={referenceInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="sr-only"
+        onChange={(event) => {
+          selectReferenceImage(event.target.files?.[0] ?? null)
+          event.currentTarget.value = ''
+        }}
+      />
+      <div className="mt-2 flex items-center gap-1.5">
+        {referenceImage ? (
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded border border-primary/30 bg-primary/5 px-2 py-1 text-[11px] text-muted-foreground">
+            <ImagePlus className="h-3 w-3 shrink-0 text-primary" />
+            <span className="truncate" title={referenceImage.name}>
+              {referenceImage.name}
+            </span>
+            <button
+              type="button"
+              className="ml-auto shrink-0 rounded p-0.5 hover:bg-secondary hover:text-foreground"
+              onClick={() => setReferenceImage(null)}
+              aria-label="Remove reference image"
+              disabled={jobBusy || isImporting}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1.5 text-[11px]"
+            onClick={() => referenceInputRef.current?.click()}
+            disabled={connectorStatus !== 'ready' || jobBusy || isImporting}
+          >
+            <ImagePlus className="h-3 w-3" />
+            Animate image
+          </Button>
+        )}
+      </div>
 
       <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground" role="status">
         {job?.message || message}

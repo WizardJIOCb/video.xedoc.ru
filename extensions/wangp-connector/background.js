@@ -25,7 +25,7 @@ async function getWanGpTab() {
   return tab.id
 }
 
-function startGeneration(prompt) {
+async function startGeneration({ prompt, referenceImage }) {
   const isVisible = (element) => {
     const rect = element.getBoundingClientRect()
     const style = getComputedStyle(element)
@@ -45,15 +45,44 @@ function startGeneration(prompt) {
   const input =
     document.querySelector('#wangp-prompt-advanced textarea') ??
     [...document.querySelectorAll('textarea')].find(isVisible)
-  const generate = [...document.querySelectorAll('button')].find(
-    (button) => isVisible(button) && button.textContent.trim() === 'Generate',
-  )
 
-  if (!(input instanceof HTMLTextAreaElement) || !(generate instanceof HTMLButtonElement)) {
+  if (!(input instanceof HTMLTextAreaElement)) {
     throw new Error('WanGP is still loading. Open its tab once and try again.')
   }
 
   const beforeSources = collectVideoUrls()
+
+  if (referenceImage) {
+    const startWithImage = [...document.querySelectorAll('label')].find(
+      (label) => isVisible(label) && label.textContent.trim() === 'Start with Image',
+    )
+    if (!(startWithImage instanceof HTMLElement)) {
+      throw new Error('WanGP does not expose the “Start with Image” mode yet.')
+    }
+    startWithImage.click()
+    await new Promise((resolve) => setTimeout(resolve, 700))
+
+    const upload = document.querySelector('#wangp-start-image-gallery input[type=file]')
+    if (!(upload instanceof HTMLInputElement)) {
+      throw new Error('WanGP is still switching to image-to-video mode. Try again in a moment.')
+    }
+    const binary = atob(referenceImage.base64)
+    const bytes = new Uint8Array(binary.length)
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index)
+    const file = new File([bytes], referenceImage.name, { type: referenceImage.mimeType })
+    const transfer = new DataTransfer()
+    transfer.items.add(file)
+    upload.files = transfer.files
+    upload.dispatchEvent(new Event('change', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+
+  const generate = [...document.querySelectorAll('button')].find(
+    (button) => isVisible(button) && button.textContent.trim() === 'Generate',
+  )
+  if (!(generate instanceof HTMLButtonElement)) {
+    throw new Error('WanGP is still loading its generation controls. Try again in a moment.')
+  }
   input.focus()
   const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
   setter?.call(input, prompt)
@@ -94,9 +123,13 @@ async function executeInWanGp(tabId, func, args = []) {
   return result[0]?.result
 }
 
-async function startJob(prompt) {
+async function startJob(payload) {
+  const prompt = typeof payload?.prompt === 'string' ? payload.prompt.trim() : ''
+  if (!prompt) throw new Error('Enter a video prompt.')
   const tabId = await getWanGpTab()
-  const result = await executeInWanGp(tabId, startGeneration, [prompt])
+  const result = await executeInWanGp(tabId, startGeneration, [
+    { prompt, referenceImage: payload?.referenceImage ?? null },
+  ])
   const jobId = crypto.randomUUID()
   const job = { tabId, beforeSources: result.beforeSources }
   jobs.set(jobId, job)
@@ -127,9 +160,7 @@ async function health() {
 function responseFor(action, payload) {
   if (action === 'health') return health()
   if (action === 'start') {
-    const prompt = typeof payload?.prompt === 'string' ? payload.prompt.trim() : ''
-    if (!prompt) throw new Error('Enter a video prompt.')
-    return startJob(prompt)
+    return startJob(payload)
   }
   if (action === 'poll') return pollJob(payload?.jobId)
   throw new Error('Unsupported connector action.')

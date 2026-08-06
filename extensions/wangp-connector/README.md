@@ -13,6 +13,8 @@ the network and it only runs on `video.xedoc.ru`.
    **Check connector**.
 
 The connector opens an inactive WanGP tab to submit the prompt through the
-application's own interface. Keep that tab open while a generation is running.
-When the task finishes, FreeCut downloads the generated video through the
-extension and stores it in the selected project's local workspace.
+application's own interface. When you choose **Animate image** in FreeCut, it
+switches WanGP to **Start with Image** and uploads that reference image before
+starting the task. Keep that tab open while a generation is running. When the
+task finishes, FreeCut downloads the generated video through the extension and
+stores it in the selected project's local workspace.
