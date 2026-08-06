@@ -112,10 +112,28 @@ function readGenerationState(beforeSources) {
   const failure = text.match(/(?:generation\s+)?error[^\n]*/i)
   if (failure) return { status: 'error', message: failure[0] }
 
-  const progress = text.match(/(?:Loading model|Generating|queue:)\s*[^\n]*/i)
+  const lines = text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+  const progressLine = lines.find((line) =>
+    /(?:prompt\s+\d+\s*\/\s*\d+|denoising|generating|loading model|queue:)/i.test(line),
+  )
+  const stepsLine = lines.find((line) => /\b\d+\s*\/\s*\d+\s+steps\b/i.test(line))
+  const percentMatch = progressLine?.match(/(\d+(?:\.\d+)?)\s*%/) ?? null
+  const stepsMatch = stepsLine?.match(/\b(\d+)\s*\/\s*(\d+)\s+steps\b/i) ?? null
+  const fromSteps =
+    stepsMatch && Number(stepsMatch[2]) > 0
+      ? (Number(stepsMatch[1]) / Number(stepsMatch[2])) * 100
+      : undefined
+  const percent = percentMatch ? Number(percentMatch[1]) : fromSteps
+  const hasProgress = progressLine || stepsLine
+
   return {
-    status: progress ? 'generating' : 'queued',
-    message: progress?.[0] ?? 'Waiting in WanGP queue',
+    status: hasProgress ? 'generating' : 'queued',
+    message: progressLine ?? 'Waiting in WanGP queue',
+    progress: Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : undefined,
+    progressSteps: stepsLine,
   }
 }
 

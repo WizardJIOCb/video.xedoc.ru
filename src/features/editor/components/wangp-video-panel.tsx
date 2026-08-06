@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
 import { Textarea } from '@/components/ui/textarea'
 import {
   importMediaLibraryService,
@@ -26,6 +27,8 @@ interface ConnectorResult {
   message?: string
   jobId?: string
   outputUrl?: string
+  progress?: number
+  progressSteps?: string
 }
 
 interface DownloadMeta {
@@ -214,7 +217,7 @@ export const WangpVideoPanel = memo(function WangpVideoPanel() {
     if (!job?.jobId || job.status === 'completed' || job.status === 'error') return
 
     let cancelled = false
-    const timer = window.setInterval(() => {
+    const poll = () => {
       void requestConnector<ConnectorResult>('poll', { jobId: job.jobId })
         .then((nextJob) => {
           if (!cancelled) setJob((previous) => ({ ...previous, ...nextJob }))
@@ -228,7 +231,10 @@ export const WangpVideoPanel = memo(function WangpVideoPanel() {
             }))
           }
         })
-    }, 3_000)
+    }
+
+    poll()
+    const timer = window.setInterval(poll, 3_000)
 
     return () => {
       cancelled = true
@@ -390,6 +396,19 @@ export const WangpVideoPanel = memo(function WangpVideoPanel() {
       <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground" role="status">
         {statusMessage}
       </p>
+
+      {jobBusy && typeof job?.progress === 'number' && (
+        <div
+          className="mt-2 space-y-1"
+          aria-label={`WanGP generation progress: ${Math.round(job.progress)}%`}
+        >
+          <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+            <span className="truncate">{job.progressSteps || 'Generating video'}</span>
+            <span className="shrink-0 font-medium text-foreground">{job.progress.toFixed(1)}%</span>
+          </div>
+          <Progress value={job.progress} className="h-1.5" />
+        </div>
+      )}
 
       <div className="mt-2 flex flex-wrap gap-1.5">
         <Button
