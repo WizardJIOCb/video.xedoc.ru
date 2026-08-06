@@ -304,6 +304,9 @@ export const WangpVideoPanel = memo(function WangpVideoPanel() {
 
   const jobBusy = job?.status === 'queued' || job?.status === 'generating'
   const completed = job?.status === 'completed' && Boolean(job.outputUrl)
+  const statusMessage = completed
+    ? 'Video is ready. Import it into this project’s media library.'
+    : job?.message || message
 
   return (
     <section className="border-b border-border bg-secondary/10 px-3 py-3">
@@ -385,7 +388,7 @@ export const WangpVideoPanel = memo(function WangpVideoPanel() {
       </div>
 
       <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground" role="status">
-        {job?.message || message}
+        {statusMessage}
       </p>
 
       <div className="mt-2 flex flex-wrap gap-1.5">

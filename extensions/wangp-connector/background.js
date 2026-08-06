@@ -50,8 +50,6 @@ async function startGeneration({ prompt, referenceImage }) {
     throw new Error('WanGP is still loading. Open its tab once and try again.')
   }
 
-  const beforeSources = collectVideoUrls()
-
   if (referenceImage) {
     const startWithImage = [...document.querySelectorAll('label')].find(
       (label) => isVisible(label) && label.textContent.trim() === 'Start with Image',
@@ -83,6 +81,9 @@ async function startGeneration({ prompt, referenceImage }) {
   if (!(generate instanceof HTMLButtonElement)) {
     throw new Error('WanGP is still loading its generation controls. Try again in a moment.')
   }
+  // Capture the gallery only after changing modes and uploading a reference. Those
+  // UI updates can lazily add previews; they are not completed generations.
+  const beforeSources = collectVideoUrls()
   input.focus()
   const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
   setter?.call(input, prompt)
