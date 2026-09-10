@@ -490,7 +490,44 @@ describe('createImportActions', () => {
     expect(loggerMocks.error).toHaveBeenCalledWith('Failed to import clip.mp4', expect.any(Error))
     expect(harness.currentState.showNotification).toHaveBeenCalledWith({
       type: 'warning',
-      message: '1 file failed to import. Check the file and try again.',
+      message:
+        'Could not import clip.mp4: Copy import failed: Import failed. Linked-file fallback failed: Import failed.',
+    })
+  })
+
+  it('falls back to a linked source when copying into the workspace fails', async () => {
+    const file = new File(['video'], 'IMG_1428.MOV', { type: 'video/quicktime' })
+    const handle = createHandle(file)
+    const linked = makeMedia({
+      id: 'linked-1',
+      storageType: 'handle',
+      fileName: 'IMG_1428.MOV',
+      mimeType: 'video/quicktime',
+    })
+    mediaLibraryServiceMocks.importMediaWithHandle
+      .mockRejectedValueOnce(new Error('Could not write source file'))
+      .mockResolvedValueOnce(linked)
+
+    const harness = createImportActionsHarness()
+    const result = await harness.actions.importHandles([handle])
+
+    expect(result).toEqual([linked])
+    expect(mediaLibraryServiceMocks.importMediaWithHandle).toHaveBeenNthCalledWith(
+      1,
+      handle,
+      'project-1',
+      { storageMode: 'copy' },
+    )
+    expect(mediaLibraryServiceMocks.importMediaWithHandle).toHaveBeenNthCalledWith(
+      2,
+      handle,
+      'project-1',
+      { storageMode: 'link' },
+    )
+    expect(harness.currentState.showNotification).toHaveBeenCalledWith({
+      type: 'info',
+      message:
+        'Imported 1 file. "IMG_1428.MOV" was linked to the original location because copying into the workspace failed. Keep the source file where it is.',
     })
   })
 
@@ -510,6 +547,7 @@ describe('createImportActions', () => {
       .mockResolvedValueOnce(imported)
       .mockResolvedValueOnce({ ...duplicate, isDuplicate: true })
       .mockRejectedValueOnce(new Error('Import failed'))
+      .mockRejectedValueOnce(new Error('Import failed'))
 
     const harness = createImportActionsHarness({ mediaItems: [duplicate] })
 
@@ -520,7 +558,7 @@ describe('createImportActions', () => {
     expect(harness.currentState.showNotification).toHaveBeenCalledWith({
       type: 'warning',
       message:
-        'Imported 1 file. Skipped 1 duplicate: duplicate.mp4. 1 file failed to import. Check the file and try again.',
+        'Imported 1 file. Skipped 1 duplicate: duplicate.mp4. Could not import failed.mp4: Copy import failed: Import failed. Linked-file fallback failed: Import failed.',
     })
   })
 

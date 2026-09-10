@@ -29,9 +29,24 @@ interface ImportTask {
 
 interface CompletedImportTask extends ImportTask {
   metadata: ImportedMetadata
+  linkedFallback?: boolean
 }
 
 type ImportStorageMode = 'copy' | 'link'
+
+interface ImportFailure {
+  fileName: string
+  message: string
+}
+
+interface ImportResultSummary {
+  results: MediaMetadata[]
+  importedCount: number
+  duplicateNames: string[]
+  linkedFallbackNames: string[]
+  unsupportedCodecFiles: UnsupportedCodecFile[]
+  failures: ImportFailure[]
+}
 
 function buildOptimisticMediaItem(
   handle: FileSystemFileHandle,
@@ -135,67 +150,100 @@ function markImportPreparationRunning(tempId: string): void {
     .updateTask(tempId, 'import', { status: 'running', progress: 0.2 })
 }
 
+function errorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message
+  }
+  return String(error || 'Unknown import error')
+}
+
+function createImportResultSummary(): ImportResultSummary {
+  return {
+    results: [],
+    importedCount: 0,
+    duplicateNames: [],
+    linkedFallbackNames: [],
+    unsupportedCodecFiles: [],
+    failures: [],
+  }
+}
+
+function processCompletedImport(
+  importResult: PromiseFulfilledResult<CompletedImportTask>,
+  summary: ImportResultSummary,
+  set: Set,
+  options?: { includeDuplicatesInResults?: boolean },
+): void {
+  const { metadata, tempId, file, handle, linkedFallback } = importResult.value
+  const wasAlreadyVisible = ensureImportedMediaVisible(set, tempId, metadata)
+
+  // "already exists in library" should only fire for a genuine no-op:
+  // re-importing a file that is ALREADY visible in this project's library.
+  // A file flagged `isDuplicate` merely has a project↔media association —
+  // which the by-design cross-workspace dedup re-creates when you re-import
+  // a file you'd removed. Surfacing that as "already exists" is wrong; it's
+  // a normal (re-)add, so fall through to the import branch with no banner.
+  if (metadata.isDuplicate && wasAlreadyVisible) {
+    summary.duplicateNames.push(file.name)
+    if (options?.includeDuplicatesInResults) {
+      summary.results.push(metadata)
+    }
+    return
+  }
+
+  setupImportedVideoProxy(metadata)
+  summary.results.push(metadata)
+  summary.importedCount += 1
+
+  if (linkedFallback) {
+    summary.linkedFallbackNames.push(file.name)
+  }
+
+  if (metadata.hasUnsupportedCodec && metadata.audioCodec) {
+    summary.unsupportedCodecFiles.push({
+      fileName: file.name,
+      audioCodec: metadata.audioCodec,
+      handle,
+    })
+  }
+}
+
+function processFailedImport(
+  importResult: PromiseRejectedResult,
+  importTask: ImportTask,
+  summary: ImportResultSummary,
+  set: Set,
+): void {
+  removeImportPlaceholder(set, importTask.tempId)
+  logger.error(`Failed to import ${importTask.file.name}`, importResult.reason)
+  summary.failures.push({
+    fileName: importTask.file.name,
+    message: errorMessage(importResult.reason),
+  })
+}
+
 function processImportResults(
   importResults: PromiseSettledResult<CompletedImportTask>[],
   importTasks: ImportTask[],
   set: Set,
   options?: { includeDuplicatesInResults?: boolean },
-): {
-  results: MediaMetadata[]
-  importedCount: number
-  duplicateNames: string[]
-  unsupportedCodecFiles: UnsupportedCodecFile[]
-  failedCount: number
-} {
-  const results: MediaMetadata[] = []
-  const duplicateNames: string[] = []
-  const unsupportedCodecFiles: UnsupportedCodecFile[] = []
-  let importedCount = 0
-  let failedCount = 0
+): ImportResultSummary {
+  const summary = createImportResultSummary()
 
-  importResults.forEach((result, index) => {
+  for (const [index, importResult] of importResults.entries()) {
     const importTask = importTasks[index]
     if (!importTask) {
-      return
+      continue
     }
 
-    if (result.status === 'fulfilled') {
-      const { metadata, tempId, file, handle } = result.value
-
-      const wasAlreadyVisible = ensureImportedMediaVisible(set, tempId, metadata)
-
-      // "already exists in library" should only fire for a genuine no-op:
-      // re-importing a file that is ALREADY visible in this project's library.
-      // A file flagged `isDuplicate` merely has a project↔media association —
-      // which the by-design cross-workspace dedup re-creates when you re-import
-      // a file you'd removed. Surfacing that as "already exists" is wrong; it's
-      // a normal (re-)add, so fall through to the import branch with no banner.
-      if (metadata.isDuplicate && wasAlreadyVisible) {
-        duplicateNames.push(file.name)
-        if (options?.includeDuplicatesInResults) {
-          results.push(metadata)
-        }
-      } else {
-        setupImportedVideoProxy(metadata)
-        results.push(metadata)
-        importedCount += 1
-
-        if (metadata.hasUnsupportedCodec && metadata.audioCodec) {
-          unsupportedCodecFiles.push({
-            fileName: file.name,
-            audioCodec: metadata.audioCodec,
-            handle,
-          })
-        }
-      }
-    } else {
-      failedCount++
-      removeImportPlaceholder(set, importTask.tempId)
-      logger.error(`Failed to import ${importTask.file.name}`, result.reason)
+    if (importResult.status === 'fulfilled') {
+      processCompletedImport(importResult, summary, set, options)
+      continue
     }
-  })
+    processFailedImport(importResult, importTask, summary, set)
+  }
 
-  return { results, importedCount, duplicateNames, unsupportedCodecFiles, failedCount }
+  return summary
 }
 
 function pluralFile(count: number): string {
@@ -208,59 +256,93 @@ function formatNameList(names: string[]): string {
   return `${names.slice(0, 3).join(', ')} and ${names.length - 3} more`
 }
 
+function formatImportedCount(importedCount: number): string | null {
+  return importedCount > 0 ? `Imported ${importedCount} ${pluralFile(importedCount)}.` : null
+}
+
+function formatDuplicateImports(
+  importedCount: number,
+  duplicateNames: string[],
+  linkedFallbackNames: string[],
+  unsupportedCodecFiles: UnsupportedCodecFile[],
+  failures: ImportFailure[],
+): string | null {
+  if (duplicateNames.length === 0) return null
+
+  const onlyDuplicates =
+    importedCount === 0 &&
+    linkedFallbackNames.length === 0 &&
+    unsupportedCodecFiles.length === 0 &&
+    failures.length === 0
+  if (onlyDuplicates) {
+    return duplicateNames.length === 1
+      ? `"${duplicateNames[0]}" already exists in library`
+      : `${duplicateNames.length} files already exist in library`
+  }
+  if (duplicateNames.length === 1) {
+    return `Skipped 1 duplicate: ${duplicateNames[0]}.`
+  }
+  return `Skipped ${duplicateNames.length} duplicates: ${formatNameList(duplicateNames)}.`
+}
+
+function formatLinkedFallbackImports(linkedFallbackNames: string[]): string | null {
+  if (linkedFallbackNames.length === 0) return null
+
+  const names = formatNameList(linkedFallbackNames)
+  const subject =
+    linkedFallbackNames.length === 1 ? `"${names}" was` : `${linkedFallbackNames.length} files were`
+  return `${subject} linked to the original location because copying into the workspace failed. Keep the source file where it is.`
+}
+
+function formatUnsupportedCodecImports(
+  unsupportedCodecFiles: UnsupportedCodecFile[],
+): string | null {
+  if (unsupportedCodecFiles.length === 0) return null
+
+  const codecList = [...new Set(unsupportedCodecFiles.map((file) => file.audioCodec))].join(', ')
+  const count = unsupportedCodecFiles.length
+  return `${count} ${pluralFile(count)} ${count === 1 ? 'has' : 'have'} unsupported audio codec (${codecList}). Waveforms may not be available.`
+}
+
+function formatFailedImports(failures: ImportFailure[]): string | null {
+  if (failures.length === 0) return null
+
+  const first = failures[0]
+  const suffix = failures.length > 1 ? ` (${failures.length - 1} more failed)` : ''
+  return `Could not import ${first?.fileName ?? 'file'}: ${first?.message ?? 'Unknown error'}${suffix}.`
+}
+
 function buildImportSummaryMessage({
   importedCount,
   duplicateNames,
+  linkedFallbackNames,
   unsupportedCodecFiles,
-  failedCount,
+  failures,
 }: {
   importedCount: number
   duplicateNames: string[]
+  linkedFallbackNames: string[]
   unsupportedCodecFiles: UnsupportedCodecFile[]
-  failedCount: number
+  failures: ImportFailure[]
 }): string | null {
-  const hasProblems =
-    duplicateNames.length > 0 || unsupportedCodecFiles.length > 0 || failedCount > 0
-  if (!hasProblems) return null
-
-  const parts: string[] = []
-
-  // Keep clean imports quiet, but include the successful count when the user
-  // also needs to know what was skipped or failed.
-  if (importedCount > 0) {
-    parts.push(`Imported ${importedCount} ${pluralFile(importedCount)}.`)
-  }
-
-  if (duplicateNames.length > 0) {
-    if (importedCount === 0 && unsupportedCodecFiles.length === 0 && failedCount === 0) {
-      parts.push(
-        duplicateNames.length === 1
-          ? `"${duplicateNames[0]}" already exists in library`
-          : `${duplicateNames.length} files already exist in library`,
-      )
-    } else if (duplicateNames.length === 1) {
-      parts.push(`Skipped 1 duplicate: ${duplicateNames[0]}.`)
-    } else {
-      parts.push(`Skipped ${duplicateNames.length} duplicates: ${formatNameList(duplicateNames)}.`)
-    }
-  }
-
-  if (unsupportedCodecFiles.length > 0) {
-    const codecList = [...new Set(unsupportedCodecFiles.map((f) => f.audioCodec))].join(', ')
-    parts.push(
-      `${unsupportedCodecFiles.length} ${pluralFile(
-        unsupportedCodecFiles.length,
-      )} ${unsupportedCodecFiles.length === 1 ? 'has' : 'have'} unsupported audio codec (${codecList}). Waveforms may not be available.`,
-    )
-  }
-
-  if (failedCount > 0) {
-    parts.push(
-      failedCount === 1
-        ? '1 file failed to import. Check the file and try again.'
-        : `${failedCount} files failed to import. Check the files and try again.`,
-    )
-  }
+  const hasAdditionalStatus =
+    duplicateNames.length > 0 ||
+    linkedFallbackNames.length > 0 ||
+    unsupportedCodecFiles.length > 0 ||
+    failures.length > 0
+  const parts = [
+    hasAdditionalStatus ? formatImportedCount(importedCount) : null,
+    formatDuplicateImports(
+      importedCount,
+      duplicateNames,
+      linkedFallbackNames,
+      unsupportedCodecFiles,
+      failures,
+    ),
+    formatLinkedFallbackImports(linkedFallbackNames),
+    formatUnsupportedCodecImports(unsupportedCodecFiles),
+    formatFailedImports(failures),
+  ].filter((part): part is string => part !== null)
 
   return parts.length > 0 ? parts.join(' ') : null
 }
@@ -268,19 +350,21 @@ function buildImportSummaryMessage({
 function showImportNotifications(
   importedCount: number,
   duplicateNames: string[],
+  linkedFallbackNames: string[],
   unsupportedCodecFiles: UnsupportedCodecFile[],
-  failedCount: number,
+  failures: ImportFailure[],
   get: Get,
 ): void {
   const message = buildImportSummaryMessage({
     importedCount,
     duplicateNames,
+    linkedFallbackNames,
     unsupportedCodecFiles,
-    failedCount,
+    failures,
   })
   if (!message) return
 
-  const type = failedCount > 0 || unsupportedCodecFiles.length > 0 ? 'warning' : 'info'
+  const type = failures.length > 0 || unsupportedCodecFiles.length > 0 ? 'warning' : 'info'
   get().showNotification({ type, message })
 }
 
@@ -358,7 +442,40 @@ export function createImportActions(
             value: { metadata, tempId: task.tempId, file: task.file, handle: task.handle },
           }
         } catch (reason) {
-          results[index] = { status: 'rejected', reason }
+          if (storageMode !== 'copy') {
+            results[index] = { status: 'rejected', reason }
+            continue
+          }
+
+          // A workspace write may fail independently of the source file itself.
+          // Retry as a linked local file so the editor can still use the media
+          // without asking the user to select it again.
+          try {
+            const metadata = await mediaLibraryService.importMediaWithHandle(
+              task.handle,
+              projectId,
+              {
+                storageMode: 'link',
+              },
+            )
+            results[index] = {
+              status: 'fulfilled',
+              value: {
+                metadata,
+                tempId: task.tempId,
+                file: task.file,
+                handle: task.handle,
+                linkedFallback: true,
+              },
+            }
+          } catch (linkedReason) {
+            results[index] = {
+              status: 'rejected',
+              reason: new Error(
+                `Copy import failed: ${errorMessage(reason)}. Linked-file fallback failed: ${errorMessage(linkedReason)}`,
+              ),
+            }
+          }
         }
       }
     }
@@ -401,10 +518,23 @@ export function createImportActions(
       storageMode,
     )
 
-    const { results, importedCount, duplicateNames, unsupportedCodecFiles, failedCount } =
-      processImportResults(importResults, importTasks, set, options)
+    const {
+      results,
+      importedCount,
+      duplicateNames,
+      linkedFallbackNames,
+      unsupportedCodecFiles,
+      failures,
+    } = processImportResults(importResults, importTasks, set, options)
 
-    showImportNotifications(importedCount, duplicateNames, unsupportedCodecFiles, failedCount, get)
+    showImportNotifications(
+      importedCount,
+      duplicateNames,
+      linkedFallbackNames,
+      unsupportedCodecFiles,
+      failures,
+      get,
+    )
 
     if (options?.waitForPreparation && results.length > 0) {
       const { mediaLibraryService } = await serviceModulePromise
@@ -414,7 +544,8 @@ export function createImportActions(
     event.success({
       imported: importedCount,
       duplicates: duplicateNames.length,
-      failed: failedCount,
+      failed: failures.length,
+      linkedFallbacks: linkedFallbackNames.length,
       unsupportedCodecs: unsupportedCodecFiles.length,
     })
 
@@ -464,21 +595,29 @@ export function createImportActions(
           storageMode,
         )
 
-        const { results, importedCount, duplicateNames, unsupportedCodecFiles, failedCount } =
-          processImportResults(importResults, importTasks, set)
+        const {
+          results,
+          importedCount,
+          duplicateNames,
+          linkedFallbackNames,
+          unsupportedCodecFiles,
+          failures,
+        } = processImportResults(importResults, importTasks, set)
 
         showImportNotifications(
           importedCount,
           duplicateNames,
+          linkedFallbackNames,
           unsupportedCodecFiles,
-          failedCount,
+          failures,
           get,
         )
 
         event.success({
           imported: importedCount,
           duplicates: duplicateNames.length,
-          failed: failedCount,
+          failed: failures.length,
+          linkedFallbacks: linkedFallbackNames.length,
           unsupportedCodecs: unsupportedCodecFiles.length,
         })
 
@@ -534,7 +673,7 @@ export function createImportActions(
         const metadata = await mediaLibraryService.importMediaFromUrl(trimmedUrl, currentProjectId)
 
         if (metadata.isDuplicate) {
-          showImportNotifications(0, [metadata.fileName], [], 0, get)
+          showImportNotifications(0, [metadata.fileName], [], [], [], get)
           event.success({
             imported: 0,
             duplicates: 1,
@@ -551,7 +690,7 @@ export function createImportActions(
           metadata.hasUnsupportedCodec && metadata.audioCodec
             ? [{ fileName: metadata.fileName, audioCodec: metadata.audioCodec }]
             : []
-        showImportNotifications(1, [], unsupportedCodecFiles, 0, get)
+        showImportNotifications(1, [], [], unsupportedCodecFiles, [], get)
 
         event.success({
           imported: 1,
@@ -597,13 +736,13 @@ export function createImportActions(
         )
 
         if (metadata.isDuplicate) {
-          showImportNotifications(0, [metadata.fileName], [], 0, get)
+          showImportNotifications(0, [metadata.fileName], [], [], [], get)
           event.success({ imported: 0, duplicates: 1, failed: 0, unsupportedCodecs: 0 })
           return metadata
         }
 
         prependImportedMedia(set, metadata)
-        showImportNotifications(1, [], [], 0, get)
+        showImportNotifications(1, [], [], [], [], get)
         event.success({ imported: 1, duplicates: 0, failed: 0, unsupportedCodecs: 0 })
         return metadata
       } catch (error) {
