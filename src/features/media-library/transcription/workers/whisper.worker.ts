@@ -14,11 +14,10 @@ import {
 import { joinTranscriptWords } from '@/shared/utils/transcript-text'
 import { resolveWhisperWordTimings, type RawWhisperWord } from '../lib/whisper-word-timings'
 import { getWhisperWebGpuBatchSize } from '../lib/whisper-runtime-options'
+import { env, pipeline } from '@huggingface/transformers'
 
 const logger = createLogger('TranscriptionWorker')
 
-const TRANSFORMERS_CDN_URL = 'https://esm.sh/@huggingface/transformers@3.8.1?bundle'
-const WASM_CDN_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/'
 const WHISPER_CHUNK_SECONDS = 30
 const WHISPER_STRIDE_SECONDS = 5
 const WHISPER_TASK = 'transcribe'
@@ -33,29 +32,6 @@ interface ProgressInfo {
   progress?: number
   loaded?: number
   total?: number
-}
-
-interface TransformersModule {
-  env: {
-    useBrowserCache: boolean
-    allowLocalModels: boolean
-    backends: {
-      onnx: {
-        wasm: {
-          wasmPaths?: string
-        }
-      }
-    }
-  }
-  pipeline: (
-    task: string,
-    modelId: string,
-    options: {
-      device: 'webgpu' | 'wasm'
-      dtype: Record<string, string> | string
-      progress_callback?: (progress: ProgressInfo) => void
-    },
-  ) => Promise<ASRPipeline>
 }
 
 let asrPipeline: ASRPipeline | null = null
@@ -143,13 +119,8 @@ async function initPipeline(modelId: string, quantization: QuantizationType): Pr
   reportedEstimatedBytes = 0
 
   try {
-    const { pipeline, env } = (await import(
-      /* @vite-ignore */ TRANSFORMERS_CDN_URL
-    )) as TransformersModule
-
     env.useBrowserCache = true
     env.allowLocalModels = false
-    env.backends.onnx.wasm.wasmPaths = WASM_CDN_URL
 
     if (asrPipeline && currentModelId !== modelId) {
       const disposable = asrPipeline as ASRPipeline & { dispose?: () => Promise<void> | void }
@@ -162,7 +133,7 @@ async function initPipeline(modelId: string, quantization: QuantizationType): Pr
       const downloadCache: DownloadProgressCache = new Map()
       const dtype =
         quantization === 'hybrid'
-          ? { encoder_model: 'fp32', decoder_model_merged: 'q4' }
+          ? ({ encoder_model: 'fp32', decoder_model_merged: 'q4' } as const)
           : quantization
 
       const progressCallback = (progress: ProgressInfo) => {
