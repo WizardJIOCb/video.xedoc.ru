@@ -168,15 +168,22 @@ function isAudioCodecSupported(codec: string | undefined): boolean {
   return !UNSUPPORTED_AUDIO_CODECS.some((unsupported) => normalizedCodec.includes(unsupported))
 }
 
-// Lazy load mediabunny only.
-// Metadata extraction and video thumbnails do not require AC-3 decoder registration.
+// Lazy load Mediabunny. The ProRes decoder is intentionally not registered here:
+// importing its WASM bundle for every H.264/AAC file can terminate a worker before
+// metadata extraction starts on browsers that cannot initialize that bundle.
 let mediabunnyModule: MediabunnyModule | null = null
 async function getMediabunny(): Promise<MediabunnyModule> {
   if (!mediabunnyModule) {
-    const [mb] = await Promise.all([import('mediabunny'), ensureProResDecoderRegistered()])
+    const mb = await import('mediabunny')
     mediabunnyModule = mb as unknown as MediabunnyModule
   }
   return mediabunnyModule
+}
+
+async function registerProResDecoderForTrack(videoTrack: MediabunnyVideoTrack): Promise<void> {
+  if (videoTrack.codec === 'prores') {
+    await ensureProResDecoderRegistered()
+  }
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
@@ -431,6 +438,8 @@ async function extractVideoMetadata(
       throw new Error('No video track found in file')
     }
 
+    await registerProResDecoderForTrack(videoTrack)
+
     // Prefer per-packet durations over short prefix average rate. Matroska
     // DefaultDuration flows into packet.duration and is more stable for
     // fractional CFR sources such as 24000/1001.
@@ -588,6 +597,8 @@ async function generateVideoThumbnail(
     if (!videoTrack) {
       throw new Error('No video track found')
     }
+
+    await registerProResDecoderForTrack(videoTrack)
 
     // Calculate dimensions preserving aspect ratio
     const dw = videoTrack.displayWidth || 1

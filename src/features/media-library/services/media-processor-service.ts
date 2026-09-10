@@ -44,13 +44,18 @@ class MediaProcessorService {
       }
 
       worker.onerror = (event) => {
-        logger.error('Media processor worker error:', event.message)
+        const detail = event.error instanceof Error ? event.error.message : event.message
+        const message = detail || 'Worker terminated unexpectedly'
+        logger.error('Media processor worker error:', {
+          message,
+          filename: event.filename,
+          line: event.lineno,
+          column: event.colno,
+          cause: event.error,
+        })
         this.workerManager.terminate()
 
-        rejectAndDeletePendingRequests(
-          this.pendingRequests,
-          new Error(`Worker error: ${event.message}`),
-        )
+        rejectAndDeletePendingRequests(this.pendingRequests, new Error(`Worker error: ${message}`))
       }
 
       return () => {
