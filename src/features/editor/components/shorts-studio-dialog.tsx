@@ -166,18 +166,15 @@ export function ShortsStudioDialog({
           if (status !== 'ready') {
             setDetail(`Расшифровываю: ${media.fileName}`)
             const result = await runMediaTranscriptionJob(item.mediaId, {
-              model: 'whisper-large',
-              quantization: 'q8',
+              // Shorts Studio should be ready on an ordinary creator workstation. Large Turbo
+              // is a manual quality option, but its multi-gigabyte runtime can leave the
+              // one-click workflow stuck on the final window. Base + Hybrid is the reliable
+              // local default and keeps word timings for captions.
+              model: 'whisper-base',
+              quantization: 'hybrid',
               language: 'ru',
               onProgress: (jobProgress) =>
                 setProgress((index + jobProgress.progress) / uniqueMediaTargets.length),
-              onModelFallback: () => {
-                showNotification({
-                  type: 'info',
-                  message:
-                    'Недостаточно памяти для большой модели: использую компактную локальную модель.',
-                })
-              },
             })
             if (result.status === 'cancelled') {
               throw new Error('Расшифровка отменена.')
