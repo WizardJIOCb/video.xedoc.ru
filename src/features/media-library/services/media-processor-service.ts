@@ -7,6 +7,7 @@
 
 import { createLogger } from '@/shared/logging/logger'
 import { createManagedWorker, rejectAndDeletePendingRequests } from '@/shared/utils/managed-worker'
+import { DEFAULT_PROJECT_HEIGHT, DEFAULT_PROJECT_WIDTH } from '@/shared/projects/defaults'
 import type {
   ProcessMediaRequest,
   ProcessMediaResponse,
@@ -17,6 +18,7 @@ import type {
 
 const logger = createLogger('MediaProcessorService')
 const PROCESS_MEDIA_TIMEOUT_MS = 120_000
+const UNSUPPORTED_AUDIO_CODECS = ['dts', 'dtsc', 'dtse', 'dtsh', 'dtsl', 'truehd', 'mlpa']
 
 type MediaMetadataResult = VideoMetadata | AudioMetadata | ImageMetadata
 
@@ -28,6 +30,103 @@ interface ProcessMediaResult {
 interface PendingRequest {
   resolve: (result: ProcessMediaResult) => void
   reject: (error: Error) => void
+}
+
+interface FastVideoTrack {
+  codec: string | null
+  displayWidth: number
+  displayHeight: number
+  canDecode?: () => Promise<boolean>
+}
+
+interface FastAudioTrack {
+  codec?: unknown
+}
+
+function isAudioCodecSupported(codec: string | undefined): boolean {
+  if (!codec) return true
+  const normalizedCodec = codec.toLowerCase().trim()
+  return !UNSUPPORTED_AUDIO_CODECS.some((unsupported) => normalizedCodec.includes(unsupported))
+}
+
+function requireVideoTrack<T>(videoTrack: T | null | undefined): T {
+  if (!videoTrack) {
+    throw new Error('No video track found in file')
+  }
+  return videoTrack
+}
+
+function getAudioCodec(audioTrack: FastAudioTrack | null | undefined): string | undefined {
+  return audioTrack?.codec ? String(audioTrack.codec) : undefined
+}
+
+async function getVideoCodecSupported(videoTrack: FastVideoTrack): Promise<boolean> {
+  if (videoTrack.codec === 'prores') return false
+  if (!videoTrack.canDecode) return true
+  return videoTrack.canDecode().catch(() => true)
+}
+
+async function loadFastVideoTracks(input: {
+  computeDuration: () => Promise<number>
+  getPrimaryVideoTrack: () => Promise<FastVideoTrack | null | undefined>
+  getPrimaryAudioTrack: () => Promise<FastAudioTrack | null | undefined>
+}): Promise<{
+  duration: number
+  videoTrack: FastVideoTrack
+  audioTrack: FastAudioTrack | null | undefined
+}> {
+  const [duration, videoTrack, audioTrack] = await Promise.all([
+    input.computeDuration(),
+    input.getPrimaryVideoTrack(),
+    input.getPrimaryAudioTrack(),
+  ])
+  return { duration, videoTrack: requireVideoTrack(videoTrack), audioTrack }
+}
+
+function buildFastVideoMetadata(
+  duration: number,
+  videoTrack: FastVideoTrack,
+  audioCodec: string | undefined,
+  videoCodecSupported: boolean,
+): VideoMetadata {
+  return {
+    type: 'video',
+    duration: duration || 0,
+    width: videoTrack.displayWidth || DEFAULT_PROJECT_WIDTH,
+    height: videoTrack.displayHeight || DEFAULT_PROJECT_HEIGHT,
+    // Fast metadata intentionally does not walk encoded packets for FPS.
+    fps: 30,
+    codec: videoTrack.codec || 'unknown',
+    bitrate: 0,
+    audioCodec,
+    audioCodecSupported: isAudioCodecSupported(audioCodec),
+    videoCodecSupported,
+  }
+}
+
+/**
+ * Browser workers can terminate while probing otherwise valid media on some
+ * Chromium builds. Fast metadata is deliberately small, so keep the import
+ * path reliable by probing it on the main thread without decoding a frame.
+ */
+async function processFastVideoMetadataOnMainThread(file: File): Promise<ProcessMediaResult> {
+  const { ALL_FORMATS, BlobSource, Input } = await import('mediabunny')
+  const input = new Input({
+    formats: ALL_FORMATS,
+    source: new BlobSource(file),
+  })
+
+  try {
+    const { duration, videoTrack, audioTrack } = await loadFastVideoTracks(input)
+    const audioCodec = getAudioCodec(audioTrack)
+    const videoCodecSupported = await getVideoCodecSupported(videoTrack)
+
+    return {
+      metadata: buildFastVideoMetadata(duration, videoTrack, audioCodec, videoCodecSupported),
+    }
+  } finally {
+    input.dispose()
+  }
 }
 
 class MediaProcessorService {
@@ -117,6 +216,10 @@ class MediaProcessorService {
       fastMetadata?: boolean
     },
   ): Promise<ProcessMediaResult> {
+    if (options?.fastMetadata && mimeType.startsWith('video/')) {
+      return processFastVideoMetadataOnMainThread(file)
+    }
+
     const worker = this.ensureWorker()
     const requestId = `media-${++this.requestId}`
 
