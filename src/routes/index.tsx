@@ -9,6 +9,7 @@ import {
   Star,
   ExternalLink,
   BookOpen,
+  Scissors,
 } from 'lucide-react'
 import { FreeCutLogo } from '@/components/brand/freecut-logo'
 import { DiscordIcon } from '@/components/brand/discord-icon'
@@ -174,6 +175,13 @@ function LandingPage() {
               <Link to="/projects">
                 {t('projects.landing.getStarted')}
                 <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+
+            <Button asChild variant="outline" size="lg" className="gap-2">
+              <Link to="/shorts">
+                <Scissors className="h-4 w-4" />
+                Shorts Studio
               </Link>
             </Button>
 

@@ -12,11 +12,14 @@ const EDGE_BUDGETS = [
   // Re-baselined for the editor's intentionally split timeline adapter surface:
   // store, hooks, UI, panels, motion, subscriptions, cache and test helpers all
   // cross the feature boundary through dedicated deps/* contracts.
-  { edge: 'editor -> timeline', maxImports: 73, maxFiles: 11 },
+  // Shorts Studio uses the existing non-destructive filler preview through one
+  // editor adapter; retain a tight ceiling while accounting for that product surface.
+  { edge: 'editor -> timeline', maxImports: 74, maxFiles: 12 },
   // The editor preview contract added one supported preview export. Keep the
   // file budget tight so this remains consolidated behind the existing adapter.
   { edge: 'editor -> preview', maxImports: 16, maxFiles: 2 },
-  { edge: 'editor -> media-library', maxImports: 13, maxFiles: 2 },
+  // The same adapter starts the local transcription job and attaches captions.
+  { edge: 'editor -> media-library', maxImports: 14, maxFiles: 2 },
   { edge: 'preview -> timeline', maxImports: 2, maxFiles: 2 },
   { edge: 'preview -> player', maxImports: 2, maxFiles: 2 },
   // Raised for the on-device transcription + caption feature: the timeline

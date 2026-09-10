@@ -12,6 +12,7 @@ import {
   Keyboard,
   ListVideo,
   Save,
+  Scissors,
   Settings,
   Sparkles,
   Video,
@@ -71,6 +72,7 @@ interface ToolbarProps {
   onExport?: () => void
   onExportBundle?: () => void
   onOpenRenderQueue?: () => void
+  onOpenShortsStudio?: () => void
   /** Number of queued + rendering jobs, shown as a badge on the queue button. */
   renderQueueCount?: number
 }
@@ -82,6 +84,7 @@ export const Toolbar = memo(function Toolbar({
   onExport,
   onExportBundle,
   onOpenRenderQueue,
+  onOpenShortsStudio,
   renderQueueCount = 0,
 }: ToolbarProps) {
   const navigate = useNavigate()
@@ -98,18 +101,15 @@ export const Toolbar = memo(function Toolbar({
   const maxItemEndFrame = useItemsStore((state) => state.maxItemEndFrame)
   const mediaDependencyIds = useItemsStore((state) => state.mediaDependencyIds)
   const brokenMediaIds = useMediaLibraryStore((state) => state.brokenMediaIds)
-  const projectSummary = useMemo(
-    () => {
-      const projectMediaIds = new Set(mediaDependencyIds)
-      return {
-        durationSeconds: project.fps > 0 ? maxItemEndFrame / project.fps : 0,
-        clipCount: itemCount,
-        mediaCount: mediaDependencyIds.length,
-        brokenMediaCount: brokenMediaIds.filter((mediaId) => projectMediaIds.has(mediaId)).length,
-      }
-    },
-    [brokenMediaIds, itemCount, maxItemEndFrame, mediaDependencyIds, project.fps],
-  )
+  const projectSummary = useMemo(() => {
+    const projectMediaIds = new Set(mediaDependencyIds)
+    return {
+      durationSeconds: project.fps > 0 ? maxItemEndFrame / project.fps : 0,
+      clipCount: itemCount,
+      mediaCount: mediaDependencyIds.length,
+      brokenMediaCount: brokenMediaIds.filter((mediaId) => projectMediaIds.has(mediaId)).length,
+    }
+  }, [brokenMediaIds, itemCount, maxItemEndFrame, mediaDependencyIds, project.fps])
 
   useEffect(() => {
     setHasUnseenWhatsNew(hasUnseenChangelog())
@@ -314,6 +314,12 @@ export const Toolbar = memo(function Toolbar({
         <Separator orientation="vertical" className="h-5" />
 
         {/* Actions */}
+        {onOpenShortsStudio && (
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={onOpenShortsStudio}>
+            <Scissors className="h-4 w-4" />
+            Shorts
+          </Button>
+        )}
         <Button
           variant="outline"
           size="sm"

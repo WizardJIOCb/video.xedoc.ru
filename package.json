@@ -53,8 +53,10 @@
     "prepare": "vp config"
   },
   "dependencies": {
+    "@desert-ant-labs/clear": "3.1.0",
     "@hookform/resolvers": "5.2.2",
     "@huggingface/transformers": "4.1.0",
+    "@litertjs/core": "2.5.3",
     "@lottiefiles/dotlottie-web": "0.76.0",
     "@mediabunny/aac-encoder": "1.50.8",
     "@mediabunny/ac3": "1.50.8",

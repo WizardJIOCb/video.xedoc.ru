@@ -9,6 +9,7 @@ import { useProjectStore } from '@/features/projects/stores/project-store'
 import { FreeCutLogo } from '@/components/brand/freecut-logo'
 import { Button } from '@/components/ui/button'
 import { Github } from 'lucide-react'
+import { z } from 'zod'
 import { DiscordIcon } from '@/components/brand/discord-icon'
 import { DISCORD_INVITE_URL } from '@/config/community'
 import type { ProjectFormData } from '@/features/projects/utils/validation'
@@ -16,6 +17,9 @@ import type { ProjectFormData } from '@/features/projects/utils/validation'
 const logger = createLogger('NewProject')
 
 export const Route = createFileRoute('/projects/new')({
+  validateSearch: z.object({
+    shorts: z.literal('1').optional(),
+  }),
   component: NewProject,
   beforeLoad: async () => {
     try {
@@ -29,6 +33,7 @@ export const Route = createFileRoute('/projects/new')({
 
 function NewProject() {
   const navigate = useNavigate()
+  const { shorts } = Route.useSearch()
   const { t } = useTranslation()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const createProject = useCreateProject()
@@ -88,7 +93,20 @@ function NewProject() {
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
-        <InlineCreateProjectForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
+        <InlineCreateProjectForm
+          onSubmit={handleSubmit}
+          isSubmitting={isSubmitting}
+          defaultValues={
+            shorts
+              ? {
+                  name: 'Новый Shorts',
+                  width: 1080,
+                  height: 1920,
+                  fps: 30,
+                }
+              : undefined
+          }
+        />
       </div>
     </div>
   )

@@ -159,6 +159,11 @@ const LazyFillerRemovalDialog = lazy(() =>
     default: module.FillerRemovalDialog,
   })),
 )
+const LazyShortsStudioDialog = lazy(() =>
+  import('./shorts-studio-dialog').then((module) => ({
+    default: module.ShortsStudioDialog,
+  })),
+)
 function preloadExportDialog() {
   return importExportDialog()
 }
@@ -388,6 +393,7 @@ export const LoadedEditor = memo(function LoadedEditor({
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [bundleExportDialogOpen, setBundleExportDialogOpen] = useState(false)
   const [renderQueueOpen, setRenderQueueOpen] = useState(false)
+  const [shortsStudioOpen, setShortsStudioOpen] = useState(false)
   const renderQueueActiveCount = useRenderQueueStore(
     (s) => s.jobs.filter((j) => j.status === 'queued' || j.status === 'rendering').length,
   )
@@ -685,6 +691,7 @@ export const LoadedEditor = memo(function LoadedEditor({
           onExport={handleExport}
           onExportBundle={handleExportBundle}
           onOpenRenderQueue={handleOpenRenderQueue}
+          onOpenShortsStudio={() => setShortsStudioOpen(true)}
           renderQueueCount={renderQueueActiveCount}
         />
       </InteractionLockRegion>
@@ -846,6 +853,15 @@ export const LoadedEditor = memo(function LoadedEditor({
 
       <EditorDialogHost projectId={projectId} />
       <TimelineDialogHost />
+      {shortsStudioOpen && (
+        <Suspense fallback={null}>
+          <LazyShortsStudioDialog
+            open={shortsStudioOpen}
+            onOpenChange={setShortsStudioOpen}
+            projectId={projectId}
+          />
+        </Suspense>
+      )}
 
       {/* Single global cursor-readout for IO (in/out) drags across all surfaces. */}
       <IoDragReadout />
