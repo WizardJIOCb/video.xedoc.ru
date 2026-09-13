@@ -73,9 +73,10 @@ function ShortsPage() {
         <div className="mb-8 max-w-2xl">
           <h2 className="text-2xl font-semibold tracking-tight">Один понятный сценарий</h2>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            После добавления видео нажмите{' '}
-            <strong className="font-medium text-foreground">Shorts</strong> в верхней панели
-            редактора. Все автоматические удаления сначала показываются в предпросмотре.
+            После создания проекта откройте{' '}
+            <strong className="font-medium text-foreground">Shorts</strong> по иконке в левом меню
+            редактора. Там собраны генерация видеоряда, голос, музыка и доводка исходника. Все
+            автоматические удаления сначала показываются в предпросмотре.
           </p>
         </div>
         <div className="grid gap-4 md:grid-cols-3">

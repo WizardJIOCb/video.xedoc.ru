@@ -19,7 +19,7 @@ import {
   Pen,
   Captions,
   Sticker,
-  WandSparkles,
+  Clapperboard,
 } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import { Button } from '@/components/ui/button'
@@ -60,7 +60,7 @@ import { EffectThumbnail, useGpuEffectPreviewData } from '@/features/editor/deps
 import { createLogger } from '@/shared/logging/logger'
 import { useSettingsStore } from '@/features/editor/deps/settings'
 import { resolveGeneratedLayerCanvasSize } from '../utils/generated-layer-canvas-size'
-const LazyAiPanel = lazy(() => import('./ai-tab').then((m) => ({ default: m.AiTab })))
+const LazyShortsTab = lazy(() => import('./shorts-tab').then((m) => ({ default: m.ShortsTab })))
 const LazyTranscriptEditorPanel = lazy(() =>
   importTranscriptEditorPanel().then(({ TranscriptEditorPanel }) => ({
     default: TranscriptEditorPanel,
@@ -301,12 +301,12 @@ export const MediaSidebar = memo(function MediaSidebar() {
   const setSidebarWidth = useEditorStore((s) => s.setSidebarWidth)
   const prefersReducedMotion = useReducedMotion()
 
-  const [aiTabActivated, setAiTabActivated] = useState(activeTab === 'ai')
+  const [shortsTabActivated, setShortsTabActivated] = useState(activeTab === 'shorts')
   // The Lottie panel hits an external API on mount, so keep it unmounted until
   // the tab is first opened; it then stays mounted (state preserved).
   const [lottieTabActivated, setLottieTabActivated] = useState(activeTab === 'lottie')
   useEffect(() => {
-    if (activeTab === 'ai') setAiTabActivated(true)
+    if (activeTab === 'shorts') setShortsTabActivated(true)
     if (activeTab === 'lottie') setLottieTabActivated(true)
   }, [activeTab])
 
@@ -431,8 +431,7 @@ export const MediaSidebar = memo(function MediaSidebar() {
     const { tracks, fps, addItemOnNewTrack } = useTimelineStore.getState()
     const { activeTrackId, selectItems, setActiveTrack } = useSelectionStore.getState()
     const currentProject = useProjectStore.getState().currentProject
-    const activeCompositionId =
-      useCompositionNavigationStore.getState().activeCompositionId
+    const activeCompositionId = useCompositionNavigationStore.getState().activeCompositionId
     const activeComposition = activeCompositionId
       ? useCompositionsStore.getState().getComposition(activeCompositionId)
       : undefined
@@ -542,7 +541,7 @@ export const MediaSidebar = memo(function MediaSidebar() {
     { id: 'transitions' as const, icon: Blend, label: t('editor.mediaSidebar.transitions') },
     { id: 'lottie' as const, icon: Sticker, label: t('lottieBrowser.tabLabel') },
     { id: 'transcript' as const, icon: Captions, label: t('transcript.tabLabel') },
-    { id: 'ai' as const, icon: WandSparkles, label: t('editor.mediaSidebar.ai') },
+    { id: 'shorts' as const, icon: Clapperboard, label: 'Shorts' },
   ]
 
   const shouldSuppressGeneratedItemClick = useCallback(() => {
@@ -1157,13 +1156,13 @@ export const MediaSidebar = memo(function MediaSidebar() {
               )}
             </div>
 
-            {/* AI Tab */}
+            {/* Shorts mode: prompt-driven clips, voice/music, and local finishing tools. */}
             <div
-              className={`min-h-0 flex-1 overflow-hidden ${activeTab === 'ai' ? 'block' : 'hidden'}`}
+              className={`min-h-0 flex-1 overflow-hidden ${activeTab === 'shorts' ? 'block' : 'hidden'}`}
             >
-              {aiTabActivated && (
+              {shortsTabActivated && (
                 <Suspense fallback={null}>
-                  <LazyAiPanel />
+                  <LazyShortsTab />
                 </Suspense>
               )}
             </div>

@@ -17,7 +17,7 @@ export type EditorSidebarTab =
   | 'transitions'
   | 'lottie'
   | 'transcript'
-  | 'ai'
+  | 'shorts'
 export type EditorClipInspectorTab = 'video' | 'motion' | 'audio' | 'effects'
 
 /** The slice of editor UI state that a workspace controls. */
@@ -82,7 +82,7 @@ const SIDEBAR_TABS: readonly EditorSidebarTab[] = [
   'transitions',
   'lottie',
   'transcript',
-  'ai',
+  'shorts',
 ]
 const CLIP_INSPECTOR_TABS: readonly EditorClipInspectorTab[] = [
   'video',
@@ -116,7 +116,15 @@ export function normalizeEditorWorkspaceLayout(
     clipInspectorTab: isClipInspectorTab(candidate.clipInspectorTab)
       ? candidate.clipInspectorTab
       : preset.clipInspectorTab,
-    activeTab: isSidebarTab(candidate.activeTab) ? candidate.activeTab : preset.activeTab,
+    // The generator, voice, music, and finishing tools used to live under a
+    // generic AI tab. Keep users' saved layouts useful after moving that work
+    // into the dedicated Shorts mode.
+    activeTab:
+      candidate.activeTab === 'ai'
+        ? 'shorts'
+        : isSidebarTab(candidate.activeTab)
+          ? candidate.activeTab
+          : preset.activeTab,
     propertiesFullColumn:
       typeof candidate.propertiesFullColumn === 'boolean'
         ? candidate.propertiesFullColumn
