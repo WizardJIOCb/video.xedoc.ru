@@ -13,6 +13,7 @@ import { Route as ShortsRouteImport } from './routes/shorts'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
+import { Route as ShareShareIdRouteImport } from './routes/share/$shareId'
 import { Route as ProjectsNewRouteImport } from './routes/projects/new'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projectId'
 import { Route as EditorProjectIdRouteImport } from './routes/editor/$projectId'
@@ -36,6 +37,11 @@ const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
 const DocsIndexRoute = DocsIndexRouteImport.update({
   id: '/docs/',
   path: '/docs/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ShareShareIdRoute = ShareShareIdRouteImport.update({
+  id: '/share/$shareId',
+  path: '/share/$shareId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProjectsNewRoute = ProjectsNewRouteImport.update({
@@ -68,6 +74,7 @@ export interface FileRoutesByFullPath {
   '/editor/$projectId': typeof EditorProjectIdRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/projects/new': typeof ProjectsNewRoute
+  '/share/$shareId': typeof ShareShareIdRoute
   '/docs/': typeof DocsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
 }
@@ -78,6 +85,7 @@ export interface FileRoutesByTo {
   '/editor/$projectId': typeof EditorProjectIdRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/projects/new': typeof ProjectsNewRoute
+  '/share/$shareId': typeof ShareShareIdRoute
   '/docs': typeof DocsIndexRoute
   '/projects': typeof ProjectsIndexRoute
 }
@@ -89,6 +97,7 @@ export interface FileRoutesById {
   '/editor/$projectId': typeof EditorProjectIdRoute
   '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/projects/new': typeof ProjectsNewRoute
+  '/share/$shareId': typeof ShareShareIdRoute
   '/docs/': typeof DocsIndexRoute
   '/projects/': typeof ProjectsIndexRoute
 }
@@ -101,6 +110,7 @@ export interface FileRouteTypes {
     | '/editor/$projectId'
     | '/projects/$projectId'
     | '/projects/new'
+    | '/share/$shareId'
     | '/docs/'
     | '/projects/'
   fileRoutesByTo: FileRoutesByTo
@@ -111,6 +121,7 @@ export interface FileRouteTypes {
     | '/editor/$projectId'
     | '/projects/$projectId'
     | '/projects/new'
+    | '/share/$shareId'
     | '/docs'
     | '/projects'
   id:
@@ -121,6 +132,7 @@ export interface FileRouteTypes {
     | '/editor/$projectId'
     | '/projects/$projectId'
     | '/projects/new'
+    | '/share/$shareId'
     | '/docs/'
     | '/projects/'
   fileRoutesById: FileRoutesById
@@ -132,6 +144,7 @@ export interface RootRouteChildren {
   EditorProjectIdRoute: typeof EditorProjectIdRoute
   ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
   ProjectsNewRoute: typeof ProjectsNewRoute
+  ShareShareIdRoute: typeof ShareShareIdRoute
   DocsIndexRoute: typeof DocsIndexRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
 }
@@ -164,6 +177,13 @@ declare module '@tanstack/react-router' {
       path: '/docs'
       fullPath: '/docs/'
       preLoaderRoute: typeof DocsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/share/$shareId': {
+      id: '/share/$shareId'
+      path: '/share/$shareId'
+      fullPath: '/share/$shareId'
+      preLoaderRoute: typeof ShareShareIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/projects/new': {
@@ -204,6 +224,7 @@ const rootRouteChildren: RootRouteChildren = {
   EditorProjectIdRoute: EditorProjectIdRoute,
   ProjectsProjectIdRoute: ProjectsProjectIdRoute,
   ProjectsNewRoute: ProjectsNewRoute,
+  ShareShareIdRoute: ShareShareIdRoute,
   DocsIndexRoute: DocsIndexRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
 }

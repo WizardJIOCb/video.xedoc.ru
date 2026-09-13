@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   HardDrive,
   Check,
+  Share2,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -43,6 +44,7 @@ import {
   DEFAULT_PROJECT_HEIGHT,
   DEFAULT_PROJECT_WIDTH,
 } from '@/shared/projects/defaults'
+import { ShareProjectDialog } from '../deps/project-sharing'
 
 interface ProjectCardProps {
   project: Project
@@ -65,6 +67,7 @@ export function ProjectCard({
   const [isDuplicating, setIsDuplicating] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [clearLocalFiles, setClearLocalFiles] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
   const deleteProject = useDeleteProject()
   const restoreProject = useRestoreProject()
   const duplicateProject = useDuplicateProject()
@@ -292,6 +295,17 @@ export function ProjectCard({
                 <Copy className="w-4 h-4" />
                 {isDuplicating ? t('projects.card.duplicating') : t('projects.card.duplicate')}
               </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setShareOpen(true)
+                }}
+                className="flex items-center gap-2"
+              >
+                <Share2 className="w-4 h-4" />
+                Share project
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleDeleteClick}
@@ -377,6 +391,7 @@ export function ProjectCard({
           </div>
         </div>
       </div>
+      <ShareProjectDialog project={project} open={shareOpen} onOpenChange={setShareOpen} />
     </div>
   )
 }

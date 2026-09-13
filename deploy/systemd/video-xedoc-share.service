@@ -1,0 +1,22 @@
+[Unit]
+Description=FreeCut project sharing API
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/video.xedoc.ru/repository
+Environment=NODE_ENV=production
+Environment=PORT=3113
+Environment=PUBLIC_ORIGIN=https://video.xedoc.ru
+Environment=SHARE_DATA_DIR=/var/lib/video-xedoc-shares
+ExecStart=/usr/bin/node server/share-service.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/video-xedoc-shares
+
+[Install]
+WantedBy=multi-user.target

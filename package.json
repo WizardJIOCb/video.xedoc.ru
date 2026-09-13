@@ -36,6 +36,7 @@
     "test:preview-sync": "vp test run src/features/preview/components/video-preview.sync.test.tsx",
     "test:preview-sync:stress": "node scripts/preview-sync-stress.mjs --runs 20",
     "test:coverage": "vp test run --coverage",
+    "test:share": "node --test server/share-service.test.mjs",
     "headless": "node headless/render.mjs",
     "headless:frame": "node headless/frame.mjs",
     "headless:layout": "node headless/layout.mjs",
